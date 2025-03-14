@@ -1,0 +1,1402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>French Bulldog & Owner 3D Scene</title>
+    <!-- Add favicon links -->
+    <link rel="apple-touch-icon" sizes="180x180" href="/public/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/public/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/public/favicon-16x16.png">
+    <link rel="manifest" href="/public/site.webmanifest">
+    <link rel="shortcut icon" href="/public/favicon.ico">
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+            background-color: #f0f0f0;
+        }
+        
+        #container {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            left: 0;
+            top: 0;
+            z-index: 0;
+        }
+        
+        canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+        
+        #info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            padding: 10px;
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            border-radius: 5px;
+            font-size: 14px;
+            max-width: 300px;
+            z-index: 10;
+        }
+        
+        #controls {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            padding: 10px;
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            border-radius: 5px;
+            z-index: 10;
+        }
+        
+        h1 {
+            margin: 0 0 10px 0;
+            font-size: 18px;
+        }
+        
+        select, button {
+            margin: 5px;
+            padding: 5px 10px;
+            border-radius: 3px;
+            border: 1px solid #ccc;
+            background-color: white;
+            cursor: pointer;
+        }
+        
+        button {
+            background-color: #4c84af;
+            color: white;
+            border: none;
+            transition: background-color 0.3s;
+        }
+        
+        button:hover {
+            background-color: #2c5a8f;
+        }
+        
+        button.active {
+            background-color: #2c5a8f;
+            box-shadow: inset 0 0 5px rgba(0, 0, 0, 0.5);
+        }
+        
+        #loading-screen {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.8);
+            z-index: 1000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            color: white;
+        }
+        
+        #loading-progress {
+            width: 50%;
+            height: 20px;
+            background-color: rgba(255, 255, 255, 0.2);
+            border-radius: 10px;
+            margin-top: 20px;
+            overflow: hidden;
+        }
+        
+        #progress-bar {
+            height: 100%;
+            width: 0%;
+            background-color: #4c84af;
+            transition: width 0.3s;
+        }
+        
+        #debug-panel {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            border-radius: 5px;
+            padding: 10px;
+            z-index: 100;
+            max-width: 300px;
+        }
+        
+        #debug-panel h3 {
+            margin: 0 0 5px 0;
+            font-size: 14px;
+        }
+        
+        #debug-panel button {
+            padding: 3px 8px;
+            font-size: 12px;
+            margin: 2px;
+        }
+    </style>
+</head>
+<body>
+    <div id="container"></div>
+    
+    <div id="info">
+        <h1>3D French Bulldog & Owner</h1>
+        <p>This interactive 3D scene features a detailed French Bulldog and its owner in a park setting.</p>
+        <p>Use mouse to orbit, zoom, and pan the camera.</p>
+    </div>
+    
+    <div id="controls">
+        <div>
+            <label for="modelSelect">View: </label>
+            <select id="modelSelect">
+                <option value="both">Both Characters</option>
+                <option value="dog">Dog Only</option>
+                <option value="owner">Owner Only</option>
+            </select>
+            <button id="resetView">Reset View</button>
+            <button id="petDogBtn">Pet the Dog</button>
+            <button id="dogJumpBtn">Make Dog Jump</button>
+            <button id="dogSpinBtn">Make Dog Spin</button>
+        </div>
+    </div>
+    
+    <div id="loading-screen">
+        <h2>Loading 3D Scene</h2>
+        <div id="loading-progress">
+            <div id="progress-bar"></div>
+        </div>
+        <button id="hide-loading" style="margin-top: 20px; padding: 10px 20px;">Hide Loading Screen</button>
+    </div>
+    
+    <!-- Import Three.js and components -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.157.0/build/three.min.js"></script>
+    <script>
+        // Check if Three.js loaded
+        if (typeof THREE === 'undefined') {
+            console.error('THREE.js not loaded properly!');
+            alert('THREE.js not loaded properly!');
+        }
+    </script>
+    <!-- Try multiple OrbitControls sources for better reliability -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.157.0/examples/jsm/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.157.0/examples/js/controls/OrbitControls.js"></script>
+    <script>
+        // Create OrbitControls if it wasn't loaded from CDN
+        if (typeof THREE.OrbitControls === 'undefined') {
+            console.warn('THREE.OrbitControls from CDN not available. Creating a local implementation.');
+            
+            // Basic implementation of OrbitControls directly in the page
+            THREE.OrbitControls = function(camera, domElement) {
+                this.camera = camera;
+                this.domElement = domElement || document.createElement('div');
+                this.enableDamping = false;
+                this.dampingFactor = 0.05;
+                this.minDistance = 0;
+                this.maxDistance = Infinity;
+                this.minPolarAngle = 0;
+                this.maxPolarAngle = Math.PI;
+                
+                let scope = this;
+                let rotateStart = new THREE.Vector2();
+                let rotateEnd = new THREE.Vector2();
+                let rotateDelta = new THREE.Vector2();
+                let isDragging = false;
+                let previousMousePosition = { x: 0, y: 0 };
+                
+                // Store camera position and rotation
+                let spherical = new THREE.Spherical();
+                let target = new THREE.Vector3(0, 0, 0);
+                
+                // Set to initial position
+                updateSpherical();
+                
+                function updateSpherical() {
+                    let offset = new THREE.Vector3();
+                    offset.copy(camera.position).sub(target);
+                    spherical.setFromVector3(offset);
+                }
+                
+                this.update = function() {
+                    return true;
+                };
+                
+                this.reset = function() {
+                    isDragging = false;
+                    camera.position.set(0, 1.7, 4);
+                    camera.lookAt(0, 0, 0);
+                    updateSpherical();
+                };
+                
+                // Mouse event handlers
+                function onMouseDown(event) {
+                    event.preventDefault();
+                    isDragging = true;
+                    
+                    rotateStart.set(event.clientX, event.clientY);
+                }
+                
+                function onMouseMove(event) {
+                    if (!isDragging) return;
+                    
+                    rotateEnd.set(event.clientX, event.clientY);
+                    rotateDelta.subVectors(rotateEnd, rotateStart);
+                    
+                    // Calculate rotation
+                    spherical.theta -= rotateDelta.x * 0.002;
+                    spherical.phi -= rotateDelta.y * 0.002;
+                    
+                    // Apply constraints
+                    spherical.phi = Math.max(0.01, Math.min(Math.PI - 0.01, spherical.phi));
+                    
+                    // Apply rotation to camera position
+                    let radius = spherical.radius;
+                    camera.position.x = target.x + radius * Math.sin(spherical.phi) * Math.sin(spherical.theta);
+                    camera.position.z = target.z + radius * Math.sin(spherical.phi) * Math.cos(spherical.theta);
+                    camera.position.y = target.y + radius * Math.cos(spherical.phi);
+                    
+                    camera.lookAt(target);
+                    
+                    rotateStart.copy(rotateEnd);
+                }
+                
+                function onMouseUp() {
+                    isDragging = false;
+                }
+                
+                function onMouseWheel(event) {
+                    event.preventDefault();
+                    
+                    // Zoom in/out
+                    let delta = 0;
+                    if (event.wheelDelta) {
+                        // WebKit / Opera / Explorer 9
+                        delta = event.wheelDelta;
+                    } else if (event.detail) {
+                        // Firefox
+                        delta = -event.detail;
+                    }
+                    
+                    // Adjust distance to target
+                    if (delta > 0) {
+                        spherical.radius *= 0.9;
+                    } else {
+                        spherical.radius *= 1.1;
+                    }
+                    
+                    // Apply constraints
+                    spherical.radius = Math.max(scope.minDistance, Math.min(scope.maxDistance, spherical.radius));
+                    
+                    // Update camera position
+                    camera.position.x = target.x + spherical.radius * Math.sin(spherical.phi) * Math.sin(spherical.theta);
+                    camera.position.z = target.z + spherical.radius * Math.sin(spherical.phi) * Math.cos(spherical.theta);
+                    camera.position.y = target.y + spherical.radius * Math.cos(spherical.phi);
+                    
+                    camera.lookAt(target);
+                }
+                
+                // Add event listeners
+                this.domElement.addEventListener('mousedown', onMouseDown, false);
+                this.domElement.addEventListener('mousemove', onMouseMove, false);
+                this.domElement.addEventListener('mouseup', onMouseUp, false);
+                this.domElement.addEventListener('mousewheel', onMouseWheel, false);
+                this.domElement.addEventListener('DOMMouseScroll', onMouseWheel, false); // Firefox
+                
+                console.log('Local OrbitControls implementation created successfully');
+            };
+        }
+        
+        // Setup server-side logging
+        function serverLog(message, data) {
+            try {
+                const logData = {
+                    message: message,
+                    data: data || {},
+                    timestamp: new Date().toISOString()
+                };
+                
+                // Add to batch queue
+                Logger.addToBatch(logData);
+            } catch (e) {
+                console.error('Error in serverLog:', e);
+            }
+        }
+        
+        // Improved logging system
+        const Logger = {
+            // Log levels
+            LEVELS: {
+                DEBUG: 'DEBUG',
+                INFO: 'INFO',
+                WARN: 'WARN',
+                ERROR: 'ERROR'
+            },
+            
+            // Current log level (change to filter logs)
+            currentLevel: 'INFO', // Set to INFO by default to reduce noise
+            
+            // Categories to filter (empty array means log everything)
+            filteredCategories: [],
+            
+            // Track repeated logs
+            logHistory: {
+                lastLog: null,
+                repeatCount: 0,
+                lastTimestamp: 0,
+                suppressedCount: 0
+            },
+            
+            // Batch logging
+            logBatch: {
+                queue: [],
+                timer: null,
+                batchSize: 10,
+                batchTimeout: 500
+            },
+            
+            // Add log to batch
+            addToBatch: function(logData) {
+                this.logBatch.queue.push(logData);
+                
+                // Send batch if it's full
+                if (this.logBatch.queue.length >= this.logBatch.batchSize) {
+                    this.sendBatch();
+                } else if (!this.logBatch.timer) {
+                    // Start timer to send batch if not full
+                    this.logBatch.timer = setTimeout(() => this.sendBatch(), this.logBatch.batchTimeout);
+                }
+            },
+            
+            // Send batch to server
+            sendBatch: function() {
+                if (this.logBatch.queue.length === 0) return;
+                
+                const batch = [...this.logBatch.queue];
+                this.logBatch.queue = [];
+                
+                if (this.logBatch.timer) {
+                    clearTimeout(this.logBatch.timer);
+                    this.logBatch.timer = null;
+                }
+                
+                // Send batch to server
+                fetch('/log', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        batch: true,
+                        messages: batch,
+                        timestamp: new Date().toISOString()
+                    })
+                }).catch(err => console.error('Failed to send log batch to server:', err));
+            },
+            
+            // Main log function
+            log: function(message, level = this.LEVELS.INFO, category = 'APP') {
+                // Skip if below current log level
+                const levelOrder = {
+                    'DEBUG': 0,
+                    'INFO': 1,
+                    'WARN': 2,
+                    'ERROR': 3
+                };
+                
+                if (levelOrder[level] < levelOrder[this.currentLevel]) return;
+                
+                // Skip if category is filtered
+                if (this.filteredCategories.length > 0 && 
+                    this.filteredCategories.includes(category)) return;
+                
+                // Check for repeated logs
+                const now = Date.now();
+                const logKey = `${level}:${category}:${message}`;
+                
+                if (this.logHistory.lastLog === logKey && 
+                    (now - this.logHistory.lastTimestamp) < 1000) { // 1 second window
+                    this.logHistory.repeatCount++;
+                    this.logHistory.lastTimestamp = now;
+                    
+                    // Only log every few repeats
+                    if (this.logHistory.repeatCount > 3) {
+                        this.logHistory.suppressedCount++;
+                        return;
+                    }
+                } else {
+                    // If we had suppressed logs, show a summary
+                    if (this.logHistory.suppressedCount > 0) {
+                        const originalConsole = level === this.LEVELS.ERROR ? console.error : console.log;
+                        originalConsole.call(console, `Last message repeated ${this.logHistory.suppressedCount} more times`);
+                        
+                        // Also send to server
+                        serverLog(`${category}: Last message repeated ${this.logHistory.suppressedCount} more times`);
+                    }
+                    
+                    // Reset tracking
+                    this.logHistory.lastLog = logKey;
+                    this.logHistory.repeatCount = 1;
+                    this.logHistory.lastTimestamp = now;
+                    this.logHistory.suppressedCount = 0;
+                }
+                
+                // Format the message
+                const formattedMessage = `${category}: ${message}`;
+                
+                // Log to console
+                switch (level) {
+                    case this.LEVELS.DEBUG:
+                        console.debug(formattedMessage);
+                        break;
+                    case this.LEVELS.INFO:
+                        console.log(formattedMessage);
+                        break;
+                    case this.LEVELS.WARN:
+                        console.warn(formattedMessage);
+                        break;
+                    case this.LEVELS.ERROR:
+                        console.error(formattedMessage);
+                        break;
+                }
+                
+                // Send to server with category prefix
+                serverLog(`${category}: ${message}`);
+            },
+            
+            // Convenience methods
+            debug: function(message, category = 'APP') {
+                this.log(message, this.LEVELS.DEBUG, category);
+            },
+            
+            info: function(message, category = 'APP') {
+                this.log(message, this.LEVELS.INFO, category);
+            },
+            
+            warn: function(message, category = 'APP') {
+                this.log(message, this.LEVELS.WARN, category);
+            },
+            
+            error: function(message, category = 'APP') {
+                this.log(message, this.LEVELS.ERROR, category);
+            },
+            
+            // Group logs
+            group: function(name) {
+                console.group(name);
+                serverLog(`GROUP_START: ${name}`);
+            },
+            
+            groupEnd: function() {
+                console.groupEnd();
+                serverLog('GROUP_END');
+            },
+            
+            // Flush logs before page unload
+            flushLogs: function() {
+                if (this.logBatch.queue.length > 0) {
+                    this.sendBatch();
+                }
+            }
+        };
+        
+        // Ensure logs are sent before page unloads
+        window.addEventListener('beforeunload', function() {
+            Logger.flushLogs();
+        });
+    </script>
+    <script src="js/models/DogModel.js"></script>
+    <script src="js/models/OwnerModel.js"></script>
+    <script src="js/environment/ParkSceneCreator.js"></script>
+    
+    <!-- Main Application Script -->
+    <script>
+        // Global variables
+        let scene, camera, renderer, controls;
+        let dogModel, ownerModel;
+        let dogModelCreator, ownerModelCreator; // Store model creators for animation updates
+        let isPetting = false;
+        
+        // Initialize the application when DOM is loaded
+        document.addEventListener('DOMContentLoaded', function() {
+            Logger.info('DOM loaded, initializing application', 'APP');
+            
+            try {
+                init();
+                animate();
+                
+                // Hide loading screen after 3 seconds or when everything is loaded
+                setTimeout(() => {
+                    const loadingScreen = document.getElementById('loading-screen');
+                    if (loadingScreen && loadingScreen.style.display !== 'none') {
+                        loadingScreen.style.display = 'none';
+                        Logger.info('Loading screen hidden automatically', 'UI');
+                    }
+                }, 3000);
+            } catch (error) {
+                Logger.error(`Initialization error: ${error}`, 'INIT');
+                console.error('Initialization error:', error);
+            }
+        });
+        
+        function init() {
+            Logger.group('Initialization');
+            Logger.info('Application initializing...', 'INIT');
+            
+            try {
+                // Create scene
+                scene = new THREE.Scene();
+                scene.background = new THREE.Color(0x87CEEB); // Sky blue
+                Logger.debug('Scene created successfully', 'SCENE');
+                window.scene = scene; // Make it globally available for models
+                
+                // Create camera
+                camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+                camera.position.set(0, 1.7, 4);
+                Logger.debug('Camera created successfully', 'CAMERA');
+                
+                // Create renderer
+                renderer = new THREE.WebGLRenderer({ antialias: true });
+                renderer.setSize(window.innerWidth, window.innerHeight);
+                renderer.setPixelRatio(window.devicePixelRatio);
+                renderer.shadowMap.enabled = true;
+                Logger.debug('Renderer created successfully', 'RENDERER');
+                
+                // Add renderer to container
+                const container = document.getElementById('container');
+                container.innerHTML = ''; // Clear any existing content
+                container.appendChild(renderer.domElement);
+                Logger.debug('Renderer added to container', 'DOM');
+                
+                // Create OrbitControls
+                try {
+                    Logger.debug('Creating OrbitControls...', 'CONTROLS');
+                    controls = new THREE.OrbitControls(camera, renderer.domElement);
+                    controls.enableDamping = true;
+                    controls.dampingFactor = 0.25;
+                    controls.maxPolarAngle = Math.PI / 2;
+                    Logger.debug('OrbitControls created successfully', 'CONTROLS');
+                } catch (controlsError) {
+                    Logger.error(`Failed to create OrbitControls: ${controlsError}`, 'CONTROLS');
+                    alert('Error creating controls. Check console for details.');
+                }
+                
+                // Setup lighting
+                setupLighting();
+                
+                // Create park environment
+                createParkEnvironment();
+                
+                // Setup event listeners
+                setupEventListeners();
+                
+                // Load default models (both)
+                loadModels('both');
+                
+                // Start animation loop
+                animate();
+                
+                // Hide loading screen after everything is loaded
+                setTimeout(function() {
+                    const loadingScreen = document.getElementById('loading-screen');
+                    if (loadingScreen) {
+                        loadingScreen.style.display = 'none';
+                        Logger.info('Loading screen hidden automatically', 'UI');
+                    }
+                }, 2000); // Give a bit more time to ensure everything loads
+                
+                Logger.info('Scene initialization complete', 'INIT');
+                Logger.groupEnd();
+            } catch (error) {
+                Logger.error(`Error during initialization: ${error}`, 'INIT');
+                alert('Failed to initialize scene. Check console for details.');
+                Logger.groupEnd();
+            }
+        }
+        
+        function setupLighting() {
+            try {
+                Logger.group('Lighting Setup');
+                
+                // Create ambient light
+                const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+                scene.add(ambientLight);
+                Logger.debug('Ambient light added', 'LIGHT');
+                
+                // Create directional light (sun)
+                const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+                directionalLight.position.set(5, 10, 7.5);
+                directionalLight.castShadow = true;
+                
+                // Configure shadow properties
+                directionalLight.shadow.mapSize.width = 2048;
+                directionalLight.shadow.mapSize.height = 2048;
+                directionalLight.shadow.camera.near = 0.5;
+                directionalLight.shadow.camera.far = 50;
+                directionalLight.shadow.camera.left = -10;
+                directionalLight.shadow.camera.right = 10;
+                directionalLight.shadow.camera.top = 10;
+                directionalLight.shadow.camera.bottom = -10;
+                
+                scene.add(directionalLight);
+                Logger.debug('Directional light added', 'LIGHT');
+                
+                // Create hemisphere light for gradient shading
+                const hemisphereLight = new THREE.HemisphereLight(0xadd8e6, 0x262d04, 0.3);
+                scene.add(hemisphereLight);
+                Logger.debug('Hemisphere light added', 'LIGHT');
+                
+                Logger.groupEnd();
+            } catch (error) {
+                Logger.error(`Error setting up lighting: ${error}`, 'LIGHT');
+                Logger.groupEnd();
+            }
+        }
+        
+        function createParkEnvironment() {
+            try {
+                Logger.info('Creating park environment...', 'ENVIRONMENT');
+                
+                // Check if ParkSceneCreator is available
+                if (typeof ParkSceneCreator !== 'function') {
+                    Logger.error('ParkSceneCreator not available, falling back to simple environment', 'ENVIRONMENT');
+                    createSimpleEnvironment();
+                    return;
+                }
+                
+                // Create park scene
+                parkScene = new ParkSceneCreator(scene);
+                parkScene.createScene({
+                    groundSize: 30,
+                    treesCount: 12,
+                    bushesCount: 16,
+                    addBenches: true,
+                    addPathway: true,
+                    skyBox: true
+                });
+                
+                Logger.info('Park environment created successfully', 'ENVIRONMENT');
+            } catch (error) {
+                Logger.error(`Error creating park environment: ${error}`, 'ENVIRONMENT');
+                createSimpleEnvironment();
+            }
+        }
+        
+        function createSimpleEnvironment() {
+            try {
+                Logger.info('Creating simple environment...', 'ENVIRONMENT');
+                
+                // Create ground plane
+                const groundGeometry = new THREE.PlaneGeometry(50, 50);
+                const groundMaterial = new THREE.MeshStandardMaterial({
+                    color: 0x91e396,
+                    roughness: 0.8,
+                    metalness: 0.2
+                });
+                const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+                ground.rotation.x = -Math.PI / 2;
+                ground.position.y = 0;
+                ground.receiveShadow = true;
+                ground.name = 'ground';
+                scene.add(ground);
+                Logger.debug('Ground plane added to scene', 'ENVIRONMENT');
+                
+                // Create grid
+                const grid = new THREE.GridHelper(50, 50, 0x000000, 0x000000);
+                grid.material.opacity = 0.2;
+                grid.material.transparent = true;
+                grid.name = 'grid';
+                grid.position.y = 0.01; // Slightly above ground to prevent z-fighting
+                scene.add(grid);
+                Logger.debug('Grid added to scene', 'ENVIRONMENT');
+                
+                // Log scene contents for debugging
+                Logger.debug('Scene objects: ' + JSON.stringify(scene.children.map(child => ({
+                    name: child.name || 'unnamed',
+                    type: child.type,
+                    visible: child.visible
+                }))), 'SCENE');
+            } catch (error) {
+                Logger.error(`Error creating environment: ${error}`, 'ENVIRONMENT');
+            }
+        }
+        
+        function loadModels(modelType) {
+            Logger.info(`Loading model type: ${modelType}`, 'MODELS');
+            
+            try {
+                // Clear existing models
+                if (dogModel) {
+                    scene.remove(dogModel);
+                    Logger.debug('Removed existing dog model', 'MODELS');
+                }
+                if (ownerModel) {
+                    scene.remove(ownerModel);
+                    Logger.debug('Removed existing owner model', 'MODELS');
+                }
+                
+                const leash = scene.getObjectByName('leash');
+                if (leash) {
+                    scene.remove(leash);
+                    Logger.debug('Removed existing leash', 'MODELS');
+                }
+                
+                // Load dog model if needed
+                if (modelType === 'dog' || modelType === 'both') {
+                    createDogModel();
+                }
+                
+                // Load owner model if needed
+                if (modelType === 'owner' || modelType === 'both') {
+                    createOwnerModel();
+                }
+                
+                // Position models relative to each other
+                positionModels();
+                
+                // Add leash if both models are present
+                if (modelType === 'both' && dogModel && ownerModel) {
+                    createLeash();
+                }
+            } catch (error) {
+                Logger.error(`Error loading models: ${error}`, 'MODELS');
+            }
+        }
+        
+        function createDogModel() {
+            try {
+                console.log('Creating dog model...');
+                dogModelCreator = new DogModel(scene);
+                
+                // First try creating the model with createModel
+                dogModel = dogModelCreator.createModel();
+                
+                // If that didn't work, try createFullModel
+                if (!dogModel) {
+                    console.log('Falling back to createFullModel...');
+                    dogModel = dogModelCreator.createFullModel();
+                }
+                
+                if (dogModel) {
+                    // Position the dog properly in the scene
+                    dogModel.position.set(0.8, 0.05, 0.5);
+                    scene.add(dogModel);
+                    
+                    // Log available methods for debugging
+                    console.log('Dog model created successfully. Available methods:', 
+                        Object.getOwnPropertyNames(dogModel).filter(prop => typeof dogModel[prop] === 'function'));
+                    
+                    // Explicitly expose methods for animation
+                    if (typeof dogModel.jump !== 'function') {
+                        dogModel.jump = function() {
+                            console.log('Jump method proxy called');
+                            return dogModelCreator.jump();
+                        };
+                    }
+                    
+                    if (typeof dogModel.spin !== 'function') {
+                        dogModel.spin = function() {
+                            console.log('Spin method proxy called');
+                            return dogModelCreator.spin();
+                        };
+                    }
+                    
+                    // Initialize animation system if available
+                    if (typeof dogModelCreator.setupAnimationSystem === 'function') {
+                        dogModelCreator.setupAnimationSystem(dogModel);
+                        console.log('Dog animation system initialized');
+                    }
+                    
+                    return dogModel;
+                } else {
+                    console.error('Could not create dog model');
+                    return null;
+                }
+            } catch (error) {
+                console.error('Error creating dog model:', error);
+                return null;
+            }
+        }
+        
+        function createOwnerModel() {
+            try {
+                Logger.info('Creating owner model...', 'OWNER');
+                const ownerModelCreator = new OwnerModel(scene);
+                
+                // Try to create the full model
+                ownerModel = ownerModelCreator.createFullModel();
+                
+                if (ownerModel) {
+                    // Position properly on the ground
+                    ownerModel.position.set(-0.5, 0.02, 0);
+                    
+                    // Add to scene
+                    scene.add(ownerModel);
+                    Logger.info('Owner model added to scene successfully', 'OWNER');
+                    
+                    // Check if we need to initialize animations
+                    if (typeof ownerModelCreator.setupAnimationSystem === 'function') {
+                        ownerModelCreator.setupAnimationSystem(ownerModel);
+                        Logger.info('Owner animations initialized', 'OWNER');
+                    }
+                    
+                    return true;
+                } else {
+                    Logger.error('Failed to create owner model, using placeholder', 'OWNER');
+                    createSimpleOwnerModel();
+                    return false;
+                }
+            } catch (error) {
+                Logger.error(`Error creating owner model: ${error}`, 'OWNER');
+                createSimpleOwnerModel();
+                return false;
+            }
+        }
+        
+        function positionModels() {
+            // Position dog and owner relative to each other
+            if (dogModel && ownerModel) {
+                // Position dog slightly to the right and in front of owner
+                dogModel.position.set(0.8, 0.05, 0.5);
+                
+                // Position owner slightly to the left and properly on the ground
+                ownerModel.position.set(-0.5, 0.02, 0);
+                
+                // Make owner face the dog
+                ownerModel.rotation.y = Math.atan2(
+                    dogModel.position.x - ownerModel.position.x,
+                    dogModel.position.z - ownerModel.position.z
+                );
+                
+                Logger.info(`Models positioned - Dog: (${dogModel.position.x.toFixed(2)}, ${dogModel.position.y.toFixed(2)}, ${dogModel.position.z.toFixed(2)}) | Owner: (${ownerModel.position.x.toFixed(2)}, ${ownerModel.position.y.toFixed(2)}, ${ownerModel.position.z.toFixed(2)})`, 'MODELS');
+            }
+        }
+        
+        function createLeash() {
+            // Create leash connecting them
+            const leashMaterial = new THREE.LineBasicMaterial({ 
+                color: 0x663300,
+                linewidth: 2
+            });
+            
+            // Create a curved path for more natural leash shape
+            const curve = new THREE.CatmullRomCurve3([
+                new THREE.Vector3(-0.5 + 0.3, 1.2, 0.1),  // Owner's hand
+                new THREE.Vector3(0.1, 0.8, 0.2),         // Control point
+                new THREE.Vector3(0.5, 0.4, 0.3),         // Middle point
+                new THREE.Vector3(0.8 - 0.1, 0.3, 0.4)    // Dog's collar
+            ]);
+            
+            const points = curve.getPoints(20);
+            const leashGeometry = new THREE.BufferGeometry().setFromPoints(points);
+            
+            const leash = new THREE.Line(leashGeometry, leashMaterial);
+            leash.name = 'leash';
+            scene.add(leash);
+            
+            // Add a handle to the owner's hand
+            const handleGeometry = new THREE.TorusGeometry(0.05, 0.01, 8, 16);
+            const handleMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0x663300,
+                roughness: 0.8,
+                metalness: 0.2
+            });
+            
+            const handle = new THREE.Mesh(handleGeometry, handleMaterial);
+            handle.position.set(-0.5 + 0.3, 1.2, 0.1);
+            handle.rotation.x = Math.PI / 2;
+            handle.name = 'leashHandle';
+            scene.add(handle);
+            
+            // Add a collar to the dog's neck
+            const collarGeometry = new THREE.TorusGeometry(0.12, 0.02, 8, 16);
+            const collarMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0x990000,
+                roughness: 0.7,
+                metalness: 0.3
+            });
+            
+            const collar = new THREE.Mesh(collarGeometry, collarMaterial);
+            collar.position.set(0.8 - 0.1, 0.3, 0.4);
+            collar.rotation.x = Math.PI / 3;
+            collar.name = 'dogCollar';
+            scene.add(collar);
+            
+            Logger.info('Leash created successfully', 'INTERACTION');
+        }
+        
+        function createSimpleDogModel() {
+            // Create a simple dog placeholder using primitive shapes
+            const group = new THREE.Group();
+            group.name = 'dogPlaceholder';
+            
+            // Create body (brown box)
+            const bodyGeometry = new THREE.BoxGeometry(0.5, 0.3, 0.8);
+            const bodyMaterial = new THREE.MeshStandardMaterial({ color: 0x8B4513 });
+            const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+            body.position.y = 0.2;
+            body.castShadow = true;
+            group.add(body);
+            
+            // Create head (brown box)
+            const headGeometry = new THREE.BoxGeometry(0.3, 0.25, 0.25);
+            const head = new THREE.Mesh(headGeometry, bodyMaterial);
+            head.position.set(0, 0.4, 0.4);
+            head.castShadow = true;
+            group.add(head);
+            
+            // Create legs (4 cylinders)
+            const legGeometry = new THREE.CylinderGeometry(0.05, 0.05, 0.2, 8);
+            const legMaterial = new THREE.MeshStandardMaterial({ color: 0x8B4513 });
+            
+            // Front legs
+            const frontLeftLeg = new THREE.Mesh(legGeometry, legMaterial);
+            frontLeftLeg.position.set(0.15, 0.1, 0.25);
+            group.add(frontLeftLeg);
+            
+            const frontRightLeg = new THREE.Mesh(legGeometry, legMaterial);
+            frontRightLeg.position.set(-0.15, 0.1, 0.25);
+            group.add(frontRightLeg);
+            
+            // Back legs
+            const backLeftLeg = new THREE.Mesh(legGeometry, legMaterial);
+            backLeftLeg.position.set(0.15, 0.1, -0.25);
+            group.add(backLeftLeg);
+            
+            const backRightLeg = new THREE.Mesh(legGeometry, legMaterial);
+            backRightLeg.position.set(-0.15, 0.1, -0.25);
+            group.add(backRightLeg);
+            
+            // Create tail (cylinder)
+            const tailGeometry = new THREE.CylinderGeometry(0.03, 0.01, 0.2, 8);
+            const tail = new THREE.Mesh(tailGeometry, legMaterial);
+            tail.position.set(0, 0.25, -0.5);
+            tail.rotation.x = Math.PI / 3;
+            group.add(tail);
+            
+            // Create ears (2 cones)
+            const earGeometry = new THREE.ConeGeometry(0.08, 0.12, 8);
+            const earMaterial = new THREE.MeshStandardMaterial({ color: 0x8B4513 });
+            
+            const leftEar = new THREE.Mesh(earGeometry, earMaterial);
+            leftEar.position.set(0.1, 0.55, 0.4);
+            group.add(leftEar);
+            
+            const rightEar = new THREE.Mesh(earGeometry, earMaterial);
+            rightEar.position.set(-0.1, 0.55, 0.4);
+            group.add(rightEar);
+            
+            dogModel = group;
+            scene.add(dogModel);
+            Logger.info('Simple dog placeholder created', 'DOG');
+        }
+        
+        function createSimpleOwnerModel() {
+            // Create a simple owner (woman) placeholder using primitive shapes
+            const group = new THREE.Group();
+            group.name = 'ownerPlaceholder';
+            
+            // Create torso (blue box)
+            const torsoGeometry = new THREE.BoxGeometry(0.4, 0.6, 0.2);
+            const torsoMaterial = new THREE.MeshStandardMaterial({ color: 0x4169E1 });
+            const torso = new THREE.Mesh(torsoGeometry, torsoMaterial);
+            torso.position.y = 1.1;
+            torso.castShadow = true;
+            group.add(torso);
+            
+            // Create head (sphere)
+            const headGeometry = new THREE.SphereGeometry(0.2, 32, 16);
+            const headMaterial = new THREE.MeshStandardMaterial({ color: 0xFFD700 });
+            const head = new THREE.Mesh(headGeometry, headMaterial);
+            head.position.y = 1.6;
+            head.castShadow = true;
+            group.add(head);
+            
+            // Create arms (2 cylinders)
+            const armGeometry = new THREE.CylinderGeometry(0.05, 0.05, 0.6, 8);
+            const armMaterial = new THREE.MeshStandardMaterial({ color: 0x4169E1 });
+            
+            const leftArm = new THREE.Mesh(armGeometry, armMaterial);
+            leftArm.position.set(0.25, 1.1, 0);
+            leftArm.rotation.z = -Math.PI / 6;
+            group.add(leftArm);
+            
+            const rightArm = new THREE.Mesh(armGeometry, armMaterial);
+            rightArm.position.set(-0.25, 1.1, 0);
+            rightArm.rotation.z = Math.PI / 6;
+            group.add(rightArm);
+            
+            // Create legs (2 cylinders)
+            const legGeometry = new THREE.CylinderGeometry(0.07, 0.07, 0.8, 8);
+            const legMaterial = new THREE.MeshStandardMaterial({ color: 0x000088 });
+            
+            const leftLeg = new THREE.Mesh(legGeometry, legMaterial);
+            leftLeg.position.set(0.1, 0.4, 0);
+            group.add(leftLeg);
+            
+            const rightLeg = new THREE.Mesh(legGeometry, legMaterial);
+            rightLeg.position.set(-0.1, 0.4, 0);
+            group.add(rightLeg);
+            
+            ownerModel = group;
+            scene.add(ownerModel);
+            Logger.info('Simple owner placeholder created', 'OWNER');
+        }
+        
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            try {
+                // Update controls
+                if (controls) controls.update();
+                
+                // Update dog animations if available
+                if (dogModel) {
+                    // Update animations using the dogModelCreator
+                    if (dogModelCreator && typeof dogModelCreator.updateAnimations === 'function') {
+                        const deltaTime = 0.016; // Approximately 60fps
+                        // Log animation state occasionally to debug
+                        if (Math.random() < 0.005) { // Only log occasionally to prevent spam
+                            console.log('Animation frame - updating dog animations:', {
+                                dogModelExists: !!dogModel,
+                                creatorExists: !!dogModelCreator,
+                                updateMethodExists: typeof dogModelCreator.updateAnimations === 'function',
+                                jumpMethodExists: typeof dogModel.jump === 'function',
+                                spinMethodExists: typeof dogModel.spin === 'function'
+                            });
+                        }
+                        
+                        // Use separate try/catch for animation updates to prevent breaking the main animation loop
+                        try {
+                            dogModelCreator.updateAnimations(dogModel);
+                        } catch (animError) {
+                            console.error('Error updating dog animations via creator:', animError);
+                        }
+                        
+                        // Also try to update with instance method directly
+                        try {
+                            if (typeof dogModelCreator.updateAnimations === 'function') {
+                                dogModelCreator.updateAnimations(deltaTime);
+                            }
+                        } catch (animError) {
+                            console.error('Error updating dog animations directly:', animError);
+                        }
+                    }
+                }
+                
+                // Render the scene
+                if (renderer && scene && camera) {
+                    renderer.render(scene, camera);
+                } else {
+                    Logger.error('Cannot render: missing renderer, scene, or camera', 'RENDER');
+                }
+            } catch (error) {
+                Logger.error(`Error in animation loop: ${error}`, 'RENDER');
+            }
+        }
+        
+        function setupEventListeners() {
+            // Handle window resize
+            window.addEventListener('resize', function() {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            });
+            
+            // Handle model selection changes
+            const modelSelect = document.getElementById('modelSelect');
+            if (modelSelect) {
+                modelSelect.addEventListener('change', function(e) {
+                    loadModels(e.target.value);
+                });
+            }
+            
+            // Handle button clicks
+            const resetViewBtn = document.getElementById('resetView');
+            if (resetViewBtn) {
+                resetViewBtn.addEventListener('click', function() {
+                    controls.reset();
+                });
+            }
+            
+            const petDogBtn = document.getElementById('petDogBtn');
+            if (petDogBtn) {
+                petDogBtn.addEventListener('click', function() {
+                    togglePetting();
+                });
+            }
+            
+            // Dog jump button
+            const dogJumpBtn = document.getElementById('dogJumpBtn');
+            if (dogJumpBtn) {
+                dogJumpBtn.addEventListener('click', function() {
+                    console.log('Jump button clicked, trying all possible methods');
+                    try {
+                        // Try every possible way to trigger the jump animation
+                        if (dogModel) {
+                            console.log('Dog model properties:', Object.getOwnPropertyNames(dogModel));
+                            
+                            // Method 1: Direct method on dogModel
+                            if (typeof dogModel.jump === 'function') {
+                                console.log('FOUND: dog.jump method, calling directly');
+                                const result = dogModel.jump();
+                                console.log('Jump direct call result:', result);
+                            } 
+                            
+                            // Method 2: Through model creator
+                            if (dogModelCreator && typeof dogModelCreator.jump === 'function') {
+                                console.log('FOUND: dogModelCreator.jump method, calling directly');
+                                const result = dogModelCreator.jump();
+                                console.log('Jump creator call result:', result);
+                            }
+                            
+                            // Method 3: Try to find it in userData
+                            if (dogModel.userData && typeof dogModel.userData.jump === 'function') {
+                                console.log('FOUND: dogModel.userData.jump method, calling');
+                                const result = dogModel.userData.jump();
+                                console.log('Jump userData call result:', result);
+                            }
+                            
+                            // Method 4: Try to access it through the prototype chain
+                            if (dogModel.__proto__ && typeof dogModel.__proto__.jump === 'function') {
+                                console.log('FOUND: jump method through prototype, calling');
+                                const result = dogModel.__proto__.jump.call(dogModel);
+                                console.log('Jump prototype call result:', result);
+                            }
+                            
+                            // Emergency measure - force jump animation directly
+                            console.log('Attempting emergency direct animation setup');
+                            
+                            // Direct animation setup - create jump animation state if needed
+                            // This is a last-resort measure if none of the methods work
+                            if (dogModelCreator) {
+                                console.log("Retrieving dog model components");
+                                const body = dogModel.getObjectByName('dogBody');
+                                const head = dogModel.getObjectByName('dogHead');
+                                const tail = dogModel.getObjectByName('dogTail');
+                                
+                                if (body) {
+                                    console.log("Found body, setting up direct jump animation");
+                                    // Store original positions
+                                    const originalY = body.position.y;
+                                    const originalZ = body.position.z;
+                                    
+                                    // Create animation directly
+                                    const jumpHeight = 0.5;
+                                    const jumpDuration = 1000;
+                                    const startTime = performance.now();
+                                    
+                                    // Create a repeating check for animation
+                                    const jumpInterval = setInterval(() => {
+                                        const elapsed = performance.now() - startTime;
+                                        const progress = Math.min(elapsed / jumpDuration, 1.0);
+                                        
+                                        if (progress < 1.0) {
+                                            // Use sine curve for smooth up/down
+                                            const height = Math.sin(progress * Math.PI) * jumpHeight;
+                                            body.position.y = originalY + height;
+                                            
+                                            // Move head and tail if they exist
+                                            if (head) head.position.y = head.position.y + height;
+                                            if (tail) tail.position.y = tail.position.y + height;
+                                        } else {
+                                            // Animation complete
+                                            body.position.y = originalY;
+                                            clearInterval(jumpInterval);
+                                            console.log("Emergency jump animation complete");
+                                        }
+                                    }, 16); // ~60fps
+                                }
+                            }
+                        } else {
+                            console.error('Dog model not found for jump animation');
+                        }
+                    } catch (error) {
+                        console.error('Error triggering jump animation:', error);
+                    }
+                });
+            }
+            
+            // Dog spin button
+            const dogSpinBtn = document.getElementById('dogSpinBtn');
+            if (dogSpinBtn) {
+                dogSpinBtn.addEventListener('click', function() {
+                    console.log('Spin button clicked, trying all possible methods');
+                    try {
+                        // Try every possible way to trigger the spin animation
+                        if (dogModel) {
+                            console.log('Dog model properties:', Object.getOwnPropertyNames(dogModel));
+                            
+                            // Method 1: Direct method on dogModel
+                            if (typeof dogModel.spin === 'function') {
+                                console.log('FOUND: dog.spin method, calling directly');
+                                const result = dogModel.spin();
+                                console.log('Spin direct call result:', result);
+                            } 
+                            
+                            // Method 2: Through model creator
+                            if (dogModelCreator && typeof dogModelCreator.spin === 'function') {
+                                console.log('FOUND: dogModelCreator.spin method, calling directly');
+                                const result = dogModelCreator.spin();
+                                console.log('Spin creator call result:', result);
+                            }
+                            
+                            // Method 3: Try to find it in userData
+                            if (dogModel.userData && typeof dogModel.userData.spin === 'function') {
+                                console.log('FOUND: dogModel.userData.spin method, calling');
+                                const result = dogModel.userData.spin();
+                                console.log('Spin userData call result:', result);
+                            }
+                            
+                            // Method 4: Try to access it through the prototype chain
+                            if (dogModel.__proto__ && typeof dogModel.__proto__.spin === 'function') {
+                                console.log('FOUND: spin method through prototype, calling');
+                                const result = dogModel.__proto__.spin.call(dogModel);
+                                console.log('Spin prototype call result:', result);
+                            }
+                            
+                            // Emergency measure - force spin animation directly
+                            console.log('Attempting emergency direct animation setup');
+                            
+                            // Direct animation setup
+                            if (dogModelCreator) {
+                                console.log("Retrieving dog model components");
+                                const body = dogModel.getObjectByName('dogBody');
+                                
+                                if (body) {
+                                    console.log("Found body, setting up direct spin animation");
+                                    // Store original rotation
+                                    const originalRotation = body.rotation.y;
+                                    
+                                    // Create animation directly
+                                    const spinDuration = 1200;
+                                    const spinRotations = 1.5;
+                                    const startTime = performance.now();
+                                    
+                                    // Create a repeating check for animation
+                                    const spinInterval = setInterval(() => {
+                                        const elapsed = performance.now() - startTime;
+                                        const progress = Math.min(elapsed / spinDuration, 1.0);
+                                        
+                                        if (progress < 1.0) {
+                                            // Full rotations in radians
+                                            const rotations = spinRotations * Math.PI * 2;
+                                            // Use easeInOutQuad for smooth acceleration/deceleration
+                                            const t = progress;
+                                            const easedProgress = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+                                            
+                                            body.rotation.y = originalRotation + (rotations * easedProgress);
+                                        } else {
+                                            // Animation complete
+                                            body.rotation.y = originalRotation;
+                                            clearInterval(spinInterval);
+                                            console.log("Emergency spin animation complete");
+                                        }
+                                    }, 16); // ~60fps
+                                }
+                            }
+                        } else {
+                            console.error('Dog model not found for spin animation');
+                        }
+                    } catch (error) {
+                        console.error('Error triggering spin animation:', error);
+                    }
+                });
+            }
+        }
+        
+        function togglePetting() {
+            if (!dogModel || !ownerModel) {
+                Logger.error('Cannot toggle petting: models not available', 'ANIMATION');
+                return;
+            }
+            
+            isPetting = !isPetting;
+            
+            // Update button text
+            const petButton = document.getElementById('petDogBtn');
+            petButton.textContent = isPetting ? 'Stop Petting' : 'Pet the Dog';
+            
+            // Debug log model properties
+            Logger.info(`Dog model has respondToPetting: ${!!dogModel.respondToPetting}`, 'ANIMATION');
+            Logger.info(`Owner model has petDog: ${!!ownerModel.petDog}`, 'ANIMATION');
+            
+            // Trigger petting animation
+            if (ownerModel.petDog) {
+                // Position dog closer to owner for petting
+                if (isPetting) {
+                    // Move dog closer to owner for petting
+                    dogModel.position.set(0.2, 0.05, 0.2);
+                    
+                    // Update owner rotation to face dog in new position
+                    ownerModel.rotation.y = Math.atan2(
+                        dogModel.position.x - ownerModel.position.x,
+                        dogModel.position.z - ownerModel.position.z
+                    );
+                    
+                    // Adjust owner position slightly to bend toward dog
+                    ownerModel.position.z = 0.1;
+                    
+                    // Hide leash during petting
+                    const leash = scene.getObjectByName('leash');
+                    const handle = scene.getObjectByName('leashHandle');
+                    const collar = scene.getObjectByName('dogCollar');
+                    
+                    if (leash) leash.visible = false;
+                    if (handle) handle.visible = false;
+                    if (collar) collar.visible = false;
+                } else {
+                    // Move dog back to original position
+                    dogModel.position.set(0.8, 0.05, 0.5);
+                    
+                    // Reset owner position
+                    ownerModel.position.z = 0;
+                    
+                    // Update owner rotation
+                    ownerModel.rotation.y = Math.atan2(
+                        dogModel.position.x - ownerModel.position.x,
+                        dogModel.position.z - ownerModel.position.z
+                    );
+                    
+                    // Show leash again
+                    const leash = scene.getObjectByName('leash');
+                    const handle = scene.getObjectByName('leashHandle');
+                    const collar = scene.getObjectByName('dogCollar');
+                    
+                    if (leash) leash.visible = true;
+                    if (handle) handle.visible = true;
+                    if (collar) collar.visible = true;
+                    
+                    // Update leash position
+                    updateLeashPosition();
+                }
+                
+                ownerModel.petDog(dogModel, isPetting);
+                Logger.info(isPetting ? 'Owner is petting the dog' : 'Owner stopped petting the dog', 'ANIMATION');
+            } else {
+                Logger.error('Owner model does not have petDog method', 'ANIMATION');
+            }
+        }
+        
+        function updateLeashPosition() {
+            // Update leash position based on current model positions
+            const leash = scene.getObjectByName('leash');
+            const handle = scene.getObjectByName('leashHandle');
+            const collar = scene.getObjectByName('dogCollar');
+            
+            if (leash && handle && collar && dogModel && ownerModel) {
+                // Remove old leash
+                scene.remove(leash);
+                scene.remove(handle);
+                scene.remove(collar);
+                
+                // Create new leash with updated positions
+                createLeash();
+            }
+        }
+    </script>
+</body>
+</html> 

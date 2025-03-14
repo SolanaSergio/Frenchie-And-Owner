@@ -1,0 +1,25 @@
+{
+  "name": "3d-model-project",
+  "version": "1.0.0",
+  "description": "3D models of a French Bulldog and its owner using Three.js",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js"
+  },
+  "keywords": [
+    "3D",
+    "model",
+    "Three.js",
+    "French Bulldog",
+    "character"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "canvas": "^3.1.0"
+  },
+  "devDependencies": {
+    "nodemon": "^2.0.22"
+  }
+}

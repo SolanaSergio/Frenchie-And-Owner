@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Models Debug Mode</title>
+    <style>
+        body { margin: 0; padding: 0; overflow: hidden; }
+        canvas { display: block; }
+        #info {
+            position: absolute;
+            top: 10px;
+            width: 100%;
+            text-align: center;
+            color: white;
+            font-family: Arial, sans-serif;
+            font-size: 16px;
+            pointer-events: none;
+            text-shadow: 1px 1px 2px black;
+        }
+        #controls {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            font-family: Arial, sans-serif;
+            font-size: 12px;
+        }
+        #modelSelector {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            font-family: Arial, sans-serif;
+        }
+        #debugPanel {
+            position: absolute;
+            top: 60px;
+            right: 10px;
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            font-family: Arial, sans-serif;
+            max-width: 300px;
+            max-height: 400px;
+            overflow: auto;
+        }
+        select, button {
+            margin: 5px;
+            padding: 5px;
+            background-color: #444;
+            color: white;
+            border: none;
+            border-radius: 3px;
+        }
+        button:hover {
+            background-color: #666;
+        }
+        .active-button {
+            background-color: #0a5;
+        }
+    </style>
+</head>
+<body>
+    <div id="info">DEBUG MODE: French Bulldog & Owner 3D Models</div>
+    
+    <div id="modelSelector">
+        <select id="modelSelect">
+            <option value="dog">French Bulldog</option>
+            <option value="owner">Owner</option>
+            <option value="both">Both Characters</option>
+        </select>
+        <select id="componentSelect">
+            <option value="full">Full Model</option>
+            <option value="base">Base Mesh</option>
+            <option value="head">Head</option>
+            <option value="body">Body</option>
+        </select>
+        <button id="loadModel">Load Model</button>
+    </div>
+    
+    <div id="debugPanel">
+        <h3>Debug Info</h3>
+        <div id="debugInfo">No model loaded yet</div>
+    </div>
+    
+    <div id="controls">
+        <div>Controls:</div>
+        <div>Rotate: Left Mouse Button</div>
+        <div>Pan: Middle Mouse Button</div>
+        <div>Zoom: Mouse Wheel</div>
+        <div>
+            <label>
+                <input type="checkbox" id="wireframe"> Wireframe
+            </label>
+        </div>
+        <div>
+            <label>
+                <input type="checkbox" id="showGrid" checked> Show Grid
+            </label>
+        </div>
+        <div>
+            <label>
+                <input type="checkbox" id="showAxes" checked> Show Axes
+            </label>
+        </div>
+        <div>
+            <label>
+                <input type="checkbox" id="showBoundingBox"> Show Bounding Box
+            </label>
+        </div>
+        <div>
+            <button id="addTestCube">Add Test Cube</button>
+        </div>
+        <div>
+            <button id="resetCamera">Reset Camera</button>
+        </div>
+        <div>
+            <label>
+                <input type="checkbox" id="showPark" checked> Show Park Scene
+            </label>
+        </div>
+    </div>
+
+    <!-- Import Three.js from CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.0/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.0/examples/js/loaders/GLTFLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.0/examples/js/loaders/OBJLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.0/examples/js/loaders/MTLLoader.js"></script>
+
+    <!-- Import our JavaScript files -->
+    <script src="js/utils/SceneManager.js"></script>
+    <script src="js/utils/ModelLoader.js"></script>
+    <script src="js/environment/ParkSceneCreator.js"></script>
+    <script src="js/models/DogModel.js"></script>
+    <script src="js/models/OwnerModel.js"></script>
+    
+    <script>
+        // Override console.log to also display in debug panel
+        const originalConsoleLog = console.log;
+        console.log = function() {
+            // Call the original console.log
+            originalConsoleLog.apply(console, arguments);
+            
+            // Also add to debug panel
+            const debugInfo = document.getElementById('debugInfo');
+            if (debugInfo) {
+                const args = Array.from(arguments);
+                debugInfo.innerHTML += args.map(arg => 
+                    typeof arg === 'object' ? JSON.stringify(arg) : arg
+                ).join(' ') + '<br>';
+                
+                // Auto-scroll to bottom
+                debugInfo.scrollTop = debugInfo.scrollHeight;
+            }
+        };
+        
+        // Global variables
+        let scene, camera, renderer, controls;
+        let grid, axes;
+        let sceneManager;
+        let modelLoader;
+        let dogModel, ownerModel;
+        let currentModel = null;
+        let boundingBoxHelper = null;
+        let parkScene;
+        
+        // Initialize the application when the page loads
+        window.addEventListener('load', init);
+        window.addEventListener('resize', onWindowResize);
+        
+        function init() {
+            console.log("Initializing application in DEBUG mode");
+            
+            // Create scene
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x333333);
+            
+            // Create camera
+            camera = new THREE.PerspectiveCamera(
+                75, // Field of view
+                window.innerWidth / window.innerHeight, // Aspect ratio
+                0.1, // Near clipping plane
+                1000 // Far clipping plane
+            );
+            camera.position.set(0, 1.5, 5);
+            
+            // Create renderer
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.shadowMap.enabled = true;
+            document.body.appendChild(renderer.domElement);
+            
+            // Create orbit controls
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            
+            // Make controls available globally for SceneManager
+            window.controls = controls;
+            
+            // Create a grid helper
+            grid = new THREE.GridHelper(10, 10, 0x888888, 0x444444);
+            scene.add(grid);
+            
+            // Create axes helper
+            axes = new THREE.AxesHelper(5);
+            scene.add(axes);
+            
+            // Set up lighting
+            setupLighting();
+            
+            // Initialize utilities
+            sceneManager = new SceneManager(scene, camera, renderer);
+            modelLoader = new ModelLoader(scene);
+            
+            // Initialize models
+            dogModel = new DogModel(scene, modelLoader);
+            ownerModel = new OwnerModel(scene, modelLoader);
+            
+            // Add debug objects if needed
+            addTestObjects();
+            
+            // Create park scene
+            createParkEnvironment();
+            
+            // Set up UI controls
+            setupUIControls();
+            
+            // Start animation loop
+            animate();
+            
+            console.log("Initialization complete");
+        }
+        
+        function addTestObjects() {
+            console.log("Adding test objects to scene");
+            
+            // Create origin marker (red sphere at exact 0,0,0)
+            const originGeometry = new THREE.SphereGeometry(0.1, 16, 16);
+            const originMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+            const origin = new THREE.Mesh(originGeometry, originMaterial);
+            origin.position.set(0, 0, 0);
+            scene.add(origin);
+            
+            // Create XYZ position markers
+            const markerGeometry = new THREE.SphereGeometry(0.05, 16, 16);
+            
+            // X axis marker (red)
+            const xMarkerMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+            const xMarker = new THREE.Mesh(markerGeometry, xMarkerMaterial);
+            xMarker.position.set(1, 0, 0);
+            scene.add(xMarker);
+            
+            // Y axis marker (green)
+            const yMarkerMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+            const yMarker = new THREE.Mesh(markerGeometry, yMarkerMaterial);
+            yMarker.position.set(0, 1, 0);
+            scene.add(yMarker);
+            
+            // Z axis marker (blue)
+            const zMarkerMaterial = new THREE.MeshBasicMaterial({ color: 0x0000ff });
+            const zMarker = new THREE.Mesh(markerGeometry, zMarkerMaterial);
+            zMarker.position.set(0, 0, 1);
+            scene.add(zMarker);
+            
+            console.log("Test objects added to scene");
+        }
+        
+        function setupLighting() {
+            // Ambient light
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+            scene.add(ambientLight);
+            
+            // Main directional light
+            const mainLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            mainLight.position.set(5, 10, 7.5);
+            mainLight.castShadow = true;
+            scene.add(mainLight);
+            
+            // Fill light
+            const fillLight = new THREE.DirectionalLight(0xffffff, 0.3);
+            fillLight.position.set(-5, 3, -7.5);
+            scene.add(fillLight);
+            
+            // Back light
+            const backLight = new THREE.DirectionalLight(0xffffff, 0.2);
+            backLight.position.set(0, 5, -10);
+            scene.add(backLight);
+            
+            console.log("Lighting setup complete");
+        }
+        
+        function setupUIControls() {
+            // Wireframe toggle
+            document.getElementById('wireframe').addEventListener('change', function(e) {
+                sceneManager.setWireframe(e.target.checked);
+            });
+            
+            // Grid toggle
+            document.getElementById('showGrid').addEventListener('change', function(e) {
+                grid.visible = e.target.checked;
+            });
+            
+            // Axes toggle
+            document.getElementById('showAxes').addEventListener('change', function(e) {
+                axes.visible = e.target.checked;
+            });
+            
+            // Bounding box toggle
+            document.getElementById('showBoundingBox').addEventListener('change', function(e) {
+                if (currentModel) {
+                    if (e.target.checked) {
+                        boundingBoxHelper = sceneManager.createBoundingBoxHelper(currentModel);
+                    } else if (boundingBoxHelper) {
+                        scene.remove(boundingBoxHelper);
+                        boundingBoxHelper = null;
+                    }
+                }
+            });
+            
+            // Add test cube button
+            document.getElementById('addTestCube').addEventListener('click', function() {
+                const cubeGeometry = new THREE.BoxGeometry(0.5, 0.5, 0.5);
+                const cubeMaterial = new THREE.MeshStandardMaterial({
+                    color: Math.random() * 0xffffff
+                });
+                const cube = new THREE.Mesh(cubeGeometry, cubeMaterial);
+                cube.position.set(
+                    Math.random() * 4 - 2,  // -2 to 2
+                    0.25,                   // Just above the grid
+                    Math.random() * 4 - 2   // -2 to 2
+                );
+                scene.add(cube);
+                console.log("Test cube added at position:", cube.position);
+            });
+            
+            // Reset camera button
+            document.getElementById('resetCamera').addEventListener('click', function() {
+                camera.position.set(0, 1.5, 5);
+                camera.lookAt(0, 0, 0);
+                controls.target.set(0, 0, 0);
+                controls.update();
+                console.log("Camera reset to default position");
+            });
+            
+            // Load model button
+            document.getElementById('loadModel').addEventListener('click', function() {
+                loadSelectedModel();
+            });
+            
+            // Update component options when model selection changes
+            document.getElementById('modelSelect').addEventListener('change', function() {
+                updateComponentOptions();
+            });
+            
+            // Park scene toggle
+            document.getElementById('showPark').addEventListener('change', function(e) {
+                if (parkScene) {
+                    parkScene.parkElements.visible = e.target.checked;
+                    console.log(`Park scene visibility set to: ${e.target.checked}`);
+                }
+            });
+            
+            console.log("UI controls setup complete");
+        }
+        
+        function updateComponentOptions() {
+            const modelType = document.getElementById('modelSelect').value;
+            const componentSelect = document.getElementById('componentSelect');
+            
+            console.log(`Updating component options for model type: ${modelType}`);
+            
+            // Clear current options
+            componentSelect.innerHTML = '';
+            
+            // Add base options
+            const baseOptions = [
+                { value: 'full', text: 'Full Model' },
+                { value: 'base', text: 'Base Mesh' }
+            ];
+            
+            // Add model-specific options
+            if (modelType === 'dog') {
+                const dogOptions = [
+                    { value: 'head', text: 'Head' },
+                    { value: 'body', text: 'Body' },
+                    { value: 'ears', text: 'Ears' },
+                    { value: 'eyes', text: 'Eyes' },
+                    { value: 'nose', text: 'Nose' },
+                    { value: 'mouth', text: 'Mouth' },
+                    { value: 'paws', text: 'Paws' },
+                    { value: 'tail', text: 'Tail' }
+                ];
+                addOptionsToSelect(componentSelect, baseOptions.concat(dogOptions));
+            } else if (modelType === 'owner') {
+                const ownerOptions = [
+                    { value: 'head', text: 'Head' },
+                    { value: 'body', text: 'Body' },
+                    { value: 'face', text: 'Face' },
+                    { value: 'hands', text: 'Hands' },
+                    { value: 'feet', text: 'Feet' },
+                    { value: 'hair', text: 'Hair' },
+                    { value: 'clothing', text: 'Clothing' }
+                ];
+                addOptionsToSelect(componentSelect, baseOptions.concat(ownerOptions));
+            } else {
+                // Both characters - just use basic options
+                addOptionsToSelect(componentSelect, baseOptions);
+            }
+        }
+        
+        function addOptionsToSelect(selectElement, options) {
+            options.forEach(option => {
+                const optElement = document.createElement('option');
+                optElement.value = option.value;
+                optElement.textContent = option.text;
+                selectElement.appendChild(optElement);
+            });
+        }
+        
+        function loadSelectedModel() {
+            const modelType = document.getElementById('modelSelect').value;
+            const component = document.getElementById('componentSelect').value;
+            
+            console.log(`Loading model: ${modelType}, component: ${component}`);
+            
+            // Clear current model if present
+            if (currentModel) {
+                console.log("Removing existing model from scene");
+                scene.remove(currentModel);
+                currentModel = null;
+            }
+            
+            // Remove bounding box if present
+            if (boundingBoxHelper) {
+                scene.remove(boundingBoxHelper);
+                boundingBoxHelper = null;
+                document.getElementById('showBoundingBox').checked = false;
+            }
+            
+            // Clear debug panel
+            document.getElementById('debugInfo').innerHTML = '';
+            
+            // Load the selected model
+            try {
+                if (modelType === 'dog') {
+                    console.log("Creating dog model programmatically");
+                    const model = dogModel.createComponent(component);
+                    currentModel = model;
+                    scene.add(model);
+                    
+                    // Position model appropriately
+                    sceneManager.centerModel(model);
+                    
+                    console.log("Dog model added to scene");
+                } else if (modelType === 'owner') {
+                    console.log("Creating owner model programmatically");
+                    const model = ownerModel.createComponent(component);
+                    currentModel = model;
+                    scene.add(model);
+                    
+                    // Position model appropriately
+                    sceneManager.centerModel(model);
+                    
+                    console.log("Owner model added to scene");
+                } else if (modelType === 'both') {
+                    console.log("Creating both models programmatically");
+                    const dogModelObj = dogModel.createComponent('full');
+                    const ownerModelObj = ownerModel.createComponent('full');
+                    
+                    // Create a group to hold both models
+                    const group = new THREE.Group();
+                    
+                    // Position the dog relative to the owner
+                    dogModelObj.position.set(-1, 0, 0); // Dog on the left
+                    ownerModelObj.position.set(1, 0, 0);  // Owner on the right
+                    
+                    group.add(dogModelObj);
+                    group.add(ownerModelObj);
+                    
+                    currentModel = group;
+                    scene.add(group);
+                    
+                    // Position the group appropriately
+                    sceneManager.centerModel(group);
+                    
+                    console.log("Both models added to scene");
+                }
+                
+                // Automatically show bounding box for debugging
+                boundingBoxHelper = sceneManager.createBoundingBoxHelper(currentModel);
+                document.getElementById('showBoundingBox').checked = true;
+                
+            } catch (error) {
+                console.error('Error creating model:', error);
+                alert('Error creating model. See console for details.');
+            }
+        }
+        
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+        
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+        
+        /**
+         * Create the park environment
+         */
+        function createParkEnvironment() {
+            console.log("Setting up park environment");
+            
+            // Create park scene
+            parkScene = new ParkSceneCreator(scene);
+            parkScene.createParkScene({
+                groundSize: 20,
+                treesCount: 8,
+                bushesCount: 12,
+                addBenches: true,
+                addPathway: true,
+                skyBox: true
+            });
+            
+            window.parkScene = parkScene; // Make available for UI controls
+        }
+        
+        // Initialize component selection options
+        updateComponentOptions();
+    </script>
+</body>
+</html> 
