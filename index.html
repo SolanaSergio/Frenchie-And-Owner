@@ -4,12 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>French Bulldog & Owner 3D Scene</title>
-    <!-- Add favicon links -->
-    <link rel="apple-touch-icon" sizes="180x180" href="/public/apple-touch-icon.png">
-    <link rel="icon" type="image/png" sizes="32x32" href="/public/favicon-32x32.png">
-    <link rel="icon" type="image/png" sizes="16x16" href="/public/favicon-16x16.png">
-    <link rel="manifest" href="/public/site.webmanifest">
-    <link rel="shortcut icon" href="/public/favicon.ico">
+    <!-- Add favicon links with proper relative paths -->
+    <link rel="apple-touch-icon" sizes="180x180" href="public/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="public/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="public/favicon-16x16.png">
+    <link rel="manifest" href="public/site.webmanifest">
+    <link rel="shortcut icon" href="public/favicon.ico">
     <style>
         body {
             margin: 0;
@@ -319,7 +319,13 @@
                     timestamp: new Date().toISOString()
                 };
                 
-                // Add to batch queue
+                // In production (Vercel), just log to console instead of sending to server
+                if (window.location.hostname !== 'localhost' && !window.location.hostname.startsWith('127.0.0.1')) {
+                    console.log(`[${logData.timestamp}] ${logData.message}`, logData.data);
+                    return;
+                }
+                
+                // Add to batch queue for local development
                 Logger.addToBatch(logData);
             } catch (e) {
                 console.error('Error in serverLog:', e);

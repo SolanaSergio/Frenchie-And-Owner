@@ -1,0 +1,21 @@
+{
+  "version": 2,
+  "builds": [
+    { "src": "server.js", "use": "@vercel/node" },
+    { "src": "public/**", "use": "@vercel/static" },
+    { "src": "js/**", "use": "@vercel/static" },
+    { "src": "textures/**", "use": "@vercel/static" },
+    { "src": "sounds/**", "use": "@vercel/static" },
+    { "src": "*.html", "use": "@vercel/static" }
+  ],
+  "routes": [
+    { "src": "/", "dest": "index.html" },
+    { "src": "/js/(.*)", "dest": "/js/$1" },
+    { "src": "/public/(.*)", "dest": "/public/$1" },
+    { "src": "/textures/(.*)", "dest": "/textures/$1" },
+    { "src": "/sounds/(.*)", "dest": "/sounds/$1" },
+    { "src": "/log", "dest": "server.js" },
+    { "src": "/server-stats", "dest": "server.js" },
+    { "src": "/(.*)", "dest": "/$1" }
+  ]
+} 

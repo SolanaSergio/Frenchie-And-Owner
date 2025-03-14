@@ -3,7 +3,11 @@ const fs = require('fs');
 const path = require('path');
 const url = require('url');
 
-const PORT = 3000;
+// Set port for local development, Vercel will handle ports in production
+const PORT = process.env.PORT || 3000;
+
+// Check if running on Vercel
+const isVercel = process.env.VERCEL === '1';
 
 // MIME types for different file extensions
 const MIME_TYPES = {
@@ -21,7 +25,8 @@ const MIME_TYPES = {
     '.obj': 'model/obj',
     '.mtl': 'model/mtl',
     '.fbx': 'application/octet-stream',
-    '.blend': 'application/octet-stream'
+    '.blend': 'application/octet-stream',
+    '.mp3': 'audio/mpeg'
 };
 
 // Logging configuration
@@ -327,115 +332,98 @@ const stats = {
     errors: 0
 };
 
-// Create HTTP server
-const server = http.createServer((req, res) => {
-    const requestTime = new Date();
-    const parsedUrl = url.parse(req.url, true);
-    const pathname = parsedUrl.pathname;
-    
-    // Update stats
-    stats.requestCount++;
-    stats.byMethod[req.method] = (stats.byMethod[req.method] || 0) + 1;
-    
-    // Group similar paths (for textures and other repeating patterns)
-    let statPath = pathname;
-    if (pathname.startsWith('/textures/')) {
-        const ext = path.extname(pathname);
-        const type = pathname.includes('_normal') ? 'normal' :
-                    pathname.includes('_roughness') ? 'roughness' :
-                    pathname.includes('_displacement') ? 'displacement' : 'color';
-        statPath = `/textures/*${ext} (${type})`;
-    } else if (pathname.startsWith('/js/')) {
-        statPath = '/js/*' + path.extname(pathname);
-    }
-    
-    stats.byPath[statPath] = (stats.byPath[statPath] || 0) + 1;
-    
-    // Only log non-texture requests at INFO level
-    if (!pathname.startsWith('/textures/')) {
-        logInfo(`${req.method} ${pathname}`);
-    } else {
-        logDebug(`${req.method} ${pathname}`, 'REQUEST');
-    }
-    
-    // Define API endpoints first - before attempting to serve files
-    if (pathname === '/log' && req.method === 'POST') {
-        let body = '';
+// Create HTTP server only if not on Vercel
+if (!isVercel) {
+    // Create server
+    const server = http.createServer((req, res) => {
+        const requestTime = new Date();
+        const parsedUrl = url.parse(req.url, true);
+        const pathname = parsedUrl.pathname;
         
-        req.on('data', chunk => {
-            body += chunk.toString();
+        // Update stats
+        stats.requestCount++;
+        stats.byMethod[req.method] = (stats.byMethod[req.method] || 0) + 1;
+        
+        // Group similar paths (for textures and other repeating patterns)
+        let statPath = pathname;
+        if (pathname.startsWith('/textures/')) {
+            const ext = path.extname(pathname);
+            const type = pathname.includes('_normal') ? 'normal' :
+                        pathname.includes('_roughness') ? 'roughness' :
+                        pathname.includes('_displacement') ? 'displacement' : 'color';
+            statPath = `/textures/*${ext} (${type})`;
+        } else if (pathname.startsWith('/js/')) {
+            statPath = '/js/*' + path.extname(pathname);
+        }
+        
+        stats.byPath[statPath] = (stats.byPath[statPath] || 0) + 1;
+        
+        // Only log non-texture requests at INFO level
+        if (!pathname.startsWith('/textures/')) {
+            logInfo(`${req.method} ${pathname}`);
+        } else {
+            logDebug(`${req.method} ${pathname}`, 'REQUEST');
+        }
+        
+        // Define API endpoints first - before attempting to serve files
+        if (pathname === '/log' && req.method === 'POST') {
+            let body = '';
             
-            // Prevent potential DoS attack
-            if (body.length > 1e6) {
-                logError('Request body too large, potential DoS attack');
-                req.connection.destroy();
-            }
-        });
-        
-        req.on('end', () => {
-            try {
-                const data = JSON.parse(body);
+            req.on('data', chunk => {
+                body += chunk.toString();
                 
-                // Update status stats
-                stats.byStatus['200'] = (stats.byStatus['200'] || 0) + 1;
-                
-                // Send success response immediately
-                res.writeHead(200, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({ success: true }));
-                
-                // Handle batched logs
-                if (data.batch && Array.isArray(data.messages)) {
-                    // Process batch of logs
-                    logDebug(`Received batch of ${data.messages.length} logs`, 'BATCH');
+                // Prevent potential DoS attack
+                if (body.length > 1e6) {
+                    logError('Request body too large, potential DoS attack');
+                    req.connection.destroy();
+                }
+            });
+            
+            req.on('end', () => {
+                try {
+                    const data = JSON.parse(body);
                     
-                    // Group logs by category
-                    const groupedLogs = {};
+                    // Update status stats
+                    stats.byStatus['200'] = (stats.byStatus['200'] || 0) + 1;
                     
-                    data.messages.forEach(logData => {
-                        // Extract category if present
-                        let category = 'CLIENT';
-                        let message = logData.message;
-                        
-                        if (message.includes(':')) {
-                            const parts = message.split(':');
-                            if (parts.length >= 2) {
-                                category = parts[0].trim();
-                                message = parts.slice(1).join(':').trim();
-                            }
-                        }
-                        
-                        if (!groupedLogs[category]) {
-                            groupedLogs[category] = [];
-                        }
-                        
-                        groupedLogs[category].push(message);
-                    });
+                    // Send success response immediately
+                    res.writeHead(200, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ success: true }));
                     
-                    // Log each category as a group
-                    Object.entries(groupedLogs).forEach(([category, messages]) => {
-                        if (messages.length === 1) {
-                            // Single message, log normally
-                            let level = LOG_CONFIG.LEVELS.INFO;
-                            const message = messages[0];
+                    // Handle batched logs
+                    if (data.batch && Array.isArray(data.messages)) {
+                        // Process batch of logs
+                        logDebug(`Received batch of ${data.messages.length} logs`, 'BATCH');
+                        
+                        // Group logs by category
+                        const groupedLogs = {};
+                        
+                        data.messages.forEach(logData => {
+                            // Extract category if present
+                            let category = 'CLIENT';
+                            let message = logData.message;
                             
-                            // Determine log level based on message content
-                            if (message.includes('ERROR') || message.includes('error')) {
-                                level = LOG_CONFIG.LEVELS.ERROR;
-                            } else if (message.includes('WARN') || message.includes('warn')) {
-                                level = LOG_CONFIG.LEVELS.WARN;
-                            } else if (message.includes('DEBUG') || message.includes('debug')) {
-                                level = LOG_CONFIG.LEVELS.DEBUG;
+                            if (message.includes(':')) {
+                                const parts = message.split(':');
+                                if (parts.length >= 2) {
+                                    category = parts[0].trim();
+                                    message = parts.slice(1).join(':').trim();
+                                }
                             }
                             
-                            log(message, level, category);
-                        } else {
-                            // Multiple messages, log as a group
-                            log(`Received ${messages.length} logs:`, LOG_CONFIG.LEVELS.INFO, category);
+                            if (!groupedLogs[category]) {
+                                groupedLogs[category] = [];
+                            }
                             
-                            // Log up to 5 messages as examples
-                            const examples = messages.slice(0, 5);
-                            examples.forEach((message, index) => {
+                            groupedLogs[category].push(message);
+                        });
+                        
+                        // Log each category as a group
+                        Object.entries(groupedLogs).forEach(([category, messages]) => {
+                            if (messages.length === 1) {
+                                // Single message, log normally
                                 let level = LOG_CONFIG.LEVELS.INFO;
+                                const message = messages[0];
                                 
                                 // Determine log level based on message content
                                 if (message.includes('ERROR') || message.includes('error')) {
@@ -446,179 +434,210 @@ const server = http.createServer((req, res) => {
                                     level = LOG_CONFIG.LEVELS.DEBUG;
                                 }
                                 
-                                // Indent example logs
-                                log(`  ${index + 1}. ${message}`, level, category);
-                            });
-                            
-                            // If there are more messages, show a summary
-                            if (messages.length > 5) {
-                                log(`  ... and ${messages.length - 5} more`, LOG_CONFIG.LEVELS.INFO, category);
+                                log(message, level, category);
+                            } else {
+                                // Multiple messages, log as a group
+                                log(`Received ${messages.length} logs:`, LOG_CONFIG.LEVELS.INFO, category);
+                                
+                                // Log up to 5 messages as examples
+                                const examples = messages.slice(0, 5);
+                                examples.forEach((message, index) => {
+                                    let level = LOG_CONFIG.LEVELS.INFO;
+                                    
+                                    // Determine log level based on message content
+                                    if (message.includes('ERROR') || message.includes('error')) {
+                                        level = LOG_CONFIG.LEVELS.ERROR;
+                                    } else if (message.includes('WARN') || message.includes('warn')) {
+                                        level = LOG_CONFIG.LEVELS.WARN;
+                                    } else if (message.includes('DEBUG') || message.includes('debug')) {
+                                        level = LOG_CONFIG.LEVELS.DEBUG;
+                                    }
+                                    
+                                    // Indent example logs
+                                    log(`  ${index + 1}. ${message}`, level, category);
+                                });
+                                
+                                // If there are more messages, show a summary
+                                if (messages.length > 5) {
+                                    log(`  ... and ${messages.length - 5} more`, LOG_CONFIG.LEVELS.INFO, category);
+                                }
                             }
-                        }
-                    });
-                } else {
-                    // Process single log
-                    const logData = data;
-                    
-                    // Process the log data
-                    if (LOG_CONFIG.BATCH_CLIENT_LOGS) {
-                        batchClientLog(logData);
+                        });
                     } else {
-                        // Determine log level based on message content
-                        let level = LOG_CONFIG.LEVELS.INFO;
-                        let category = 'CLIENT';
+                        // Process single log
+                        const logData = data;
                         
-                        if (logData.message.includes('ERROR') || logData.message.includes('error')) {
-                            level = LOG_CONFIG.LEVELS.ERROR;
-                        } else if (logData.message.includes('WARN') || logData.message.includes('warn')) {
-                            level = LOG_CONFIG.LEVELS.WARN;
-                        } else if (logData.message.includes('DEBUG') || logData.message.includes('debug')) {
-                            level = LOG_CONFIG.LEVELS.DEBUG;
-                        }
-                        
-                        // Extract category if present
-                        if (logData.message.includes(':')) {
-                            const parts = logData.message.split(':');
-                            if (parts.length >= 2) {
-                                category = parts[0].trim();
-                                logData.message = parts.slice(1).join(':').trim();
+                        // Process the log data
+                        if (LOG_CONFIG.BATCH_CLIENT_LOGS) {
+                            batchClientLog(logData);
+                        } else {
+                            // Determine log level based on message content
+                            let level = LOG_CONFIG.LEVELS.INFO;
+                            let category = 'CLIENT';
+                            
+                            if (logData.message.includes('ERROR') || logData.message.includes('error')) {
+                                level = LOG_CONFIG.LEVELS.ERROR;
+                            } else if (logData.message.includes('WARN') || logData.message.includes('warn')) {
+                                level = LOG_CONFIG.LEVELS.WARN;
+                            } else if (logData.message.includes('DEBUG') || logData.message.includes('debug')) {
+                                level = LOG_CONFIG.LEVELS.DEBUG;
                             }
+                            
+                            // Extract category if present
+                            if (logData.message.includes(':')) {
+                                const parts = logData.message.split(':');
+                                if (parts.length >= 2) {
+                                    category = parts[0].trim();
+                                    logData.message = parts.slice(1).join(':').trim();
+                                }
+                            }
+                            
+                            log(logData.message, level, category);
                         }
-                        
-                        log(logData.message, level, category);
                     }
+                } catch (e) {
+                    logError(`Error parsing log data: ${e.message}`);
+                    res.writeHead(400, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ error: 'Invalid log data' }));
+                    
+                    // Update error stats
+                    stats.errors++;
+                    stats.byStatus['400'] = (stats.byStatus['400'] || 0) + 1;
                 }
-            } catch (e) {
-                logError(`Error parsing log data: ${e.message}`);
-                res.writeHead(400, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({ error: 'Invalid log data' }));
-                
-                // Update error stats
-                stats.errors++;
-                stats.byStatus['400'] = (stats.byStatus['400'] || 0) + 1;
-            }
-        });
-        
-        return; // Important to return here so we don't proceed to file handling
-    }
-    
-    // Stats endpoint
-    if (pathname === '/server-stats' && req.method === 'GET') {
-        const uptime = Math.floor((Date.now() - stats.startTime) / 1000);
-        const statsData = {
-            uptime: `${uptime} seconds`,
-            requests: stats.requestCount,
-            byMethod: stats.byMethod,
-            topPaths: Object.entries(stats.byPath)
-                .sort((a, b) => b[1] - a[1])
-                .slice(0, 10)
-                .reduce((obj, [key, value]) => {
-                    obj[key] = value;
-                    return obj;
-                }, {}),
-            byStatus: stats.byStatus,
-            errors: stats.errors
-        };
-        
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify(statsData, null, 2));
-        
-        // Update status stats
-        stats.byStatus['200'] = (stats.byStatus['200'] || 0) + 1;
-        return;
-    }
-    
-    // If not an API endpoint, then attempt to serve static files
-    
-    // Handle URL path
-    let filePath = pathname === '/' ? 'index.html' : pathname;
-    
-    // Resolve the file path relative to current directory
-    filePath = path.join(__dirname, filePath);
-    
-    // Get file extension
-    const extname = path.extname(filePath).toLowerCase();
-    
-    // Get content type based on file extension
-    const contentType = MIME_TYPES[extname] || 'application/octet-stream';
-    
-    // Read the file
-    fs.readFile(filePath, (err, content) => {
-        if (err) {
-            // File not found
-            if (err.code === 'ENOENT') {
-                // Check if it's a texture file
-                if (pathname.startsWith('/textures/') && extname === '.jpg') {
-                    logWarn(`Texture file not found: ${pathname}, generating placeholder`, 'TEXTURE');
-                    
-                    // Determine texture type from filename
-                    let textureType = 'color';
-                    if (pathname.includes('_normal')) textureType = 'normal';
-                    else if (pathname.includes('_roughness')) textureType = 'roughness';
-                    else if (pathname.includes('_displacement')) textureType = 'displacement';
-                    
-                    // Generate placeholder texture
-                    const placeholderContent = generatePlaceholderTexture(textureType, filePath);
-                    
-                    if (placeholderContent) {
-                        res.writeHead(200, { 'Content-Type': contentType });
-                        res.end(placeholderContent);
-                        
-                        // Update status stats
-                        stats.byStatus['200'] = (stats.byStatus['200'] || 0) + 1;
-                        return;
-                    }
-                }
-                
-                logError(`File not found: ${pathname}`);
-                res.writeHead(404);
-                res.end('404 File Not Found');
-                
-                // Update error stats
-                stats.errors++;
-                stats.byStatus['404'] = (stats.byStatus['404'] || 0) + 1;
-            } else {
-                // Server error
-                logError(`Server error: ${err.code}`);
-                res.writeHead(500);
-                res.end(`Server Error: ${err.code}`);
-                
-                // Update error stats
-                stats.errors++;
-                stats.byStatus['500'] = (stats.byStatus['500'] || 0) + 1;
-            }
-        } else {
-            // Success - send file content
-            const responseTime = new Date() - requestTime;
+            });
             
-            // Only log non-texture files at INFO level
-            if (!pathname.startsWith('/textures/')) {
-                logInfo(`Served ${pathname} (${content.length} bytes) in ${responseTime}ms`);
-            } else {
-                logDebug(`Served ${pathname} (${content.length} bytes) in ${responseTime}ms`, 'FILE');
-            }
+            return; // Important to return here so we don't proceed to file handling
+        }
+        
+        // Stats endpoint
+        if (pathname === '/server-stats' && req.method === 'GET') {
+            const uptime = Math.floor((Date.now() - stats.startTime) / 1000);
+            const statsData = {
+                uptime: `${uptime} seconds`,
+                requests: stats.requestCount,
+                byMethod: stats.byMethod,
+                topPaths: Object.entries(stats.byPath)
+                    .sort((a, b) => b[1] - a[1])
+                    .slice(0, 10)
+                    .reduce((obj, [key, value]) => {
+                        obj[key] = value;
+                        return obj;
+                    }, {}),
+                byStatus: stats.byStatus,
+                errors: stats.errors
+            };
             
-            res.writeHead(200, { 'Content-Type': contentType });
-            res.end(content, 'utf-8');
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify(statsData, null, 2));
             
             // Update status stats
             stats.byStatus['200'] = (stats.byStatus['200'] || 0) + 1;
+            return;
         }
+        
+        // If not an API endpoint, then attempt to serve static files
+        
+        // Handle URL path
+        let filePath = pathname === '/' ? 'index.html' : pathname;
+        
+        // Resolve the file path relative to current directory
+        filePath = path.join(__dirname, filePath);
+        
+        // Get file extension
+        const extname = path.extname(filePath).toLowerCase();
+        
+        // Get content type based on file extension
+        const contentType = MIME_TYPES[extname] || 'application/octet-stream';
+        
+        // Read the file
+        fs.readFile(filePath, (err, content) => {
+            if (err) {
+                // File not found
+                if (err.code === 'ENOENT') {
+                    // Check if it's a texture file
+                    if (pathname.startsWith('/textures/') && extname === '.jpg') {
+                        logWarn(`Texture file not found: ${pathname}, generating placeholder`, 'TEXTURE');
+                        
+                        // Determine texture type from filename
+                        let textureType = 'color';
+                        if (pathname.includes('_normal')) textureType = 'normal';
+                        else if (pathname.includes('_roughness')) textureType = 'roughness';
+                        else if (pathname.includes('_displacement')) textureType = 'displacement';
+                        
+                        // Generate placeholder texture
+                        const placeholderContent = generatePlaceholderTexture(textureType, filePath);
+                        
+                        if (placeholderContent) {
+                            res.writeHead(200, { 'Content-Type': contentType });
+                            res.end(placeholderContent);
+                            
+                            // Update status stats
+                            stats.byStatus['200'] = (stats.byStatus['200'] || 0) + 1;
+                            return;
+                        }
+                    }
+                    
+                    logError(`File not found: ${pathname}`);
+                    res.writeHead(404);
+                    res.end('404 File Not Found');
+                    
+                    // Update error stats
+                    stats.errors++;
+                    stats.byStatus['404'] = (stats.byStatus['404'] || 0) + 1;
+                } else {
+                    // Server error
+                    logError(`Server error: ${err.code}`);
+                    res.writeHead(500);
+                    res.end(`Server Error: ${err.code}`);
+                    
+                    // Update error stats
+                    stats.errors++;
+                    stats.byStatus['500'] = (stats.byStatus['500'] || 0) + 1;
+                }
+            } else {
+                // Success - send file content
+                const responseTime = new Date() - requestTime;
+                
+                // Only log non-texture files at INFO level
+                if (!pathname.startsWith('/textures/')) {
+                    logInfo(`Served ${pathname} (${content.length} bytes) in ${responseTime}ms`);
+                } else {
+                    logDebug(`Served ${pathname} (${content.length} bytes) in ${responseTime}ms`, 'FILE');
+                }
+                
+                res.writeHead(200, { 'Content-Type': contentType });
+                res.end(content, 'utf-8');
+                
+                // Update status stats
+                stats.byStatus['200'] = (stats.byStatus['200'] || 0) + 1;
+            }
+        });
     });
-});
+    
+    // Ensure necessary directories exist
+    ensureDirectoriesExist();
 
-// Ensure necessary directories exist
-ensureDirectoriesExist();
+    // Print server stats periodically
+    setInterval(() => {
+        const uptime = Math.floor((Date.now() - stats.startTime) / 1000);
+        logInfo(`Server stats - Uptime: ${uptime}s, Requests: ${stats.requestCount}, Errors: ${stats.errors}`);
+    }, 60000); // Every minute
 
-// Print server stats periodically
-setInterval(() => {
-    const uptime = Math.floor((Date.now() - stats.startTime) / 1000);
-    logInfo(`Server stats - Uptime: ${uptime}s, Requests: ${stats.requestCount}, Errors: ${stats.errors}`);
-}, 60000); // Every minute
+    // Start the server
+    server.listen(PORT, () => {
+        logInfo(`Server running at http://localhost:${PORT}/`);
+        logInfo(`Press Ctrl+C to stop the server`);
+        logInfo(`Server stats available at http://localhost:${PORT}/server-stats`);
+    });
+}
 
-// Start the server
-server.listen(PORT, () => {
-    logInfo(`Server running at http://localhost:${PORT}/`);
-    logInfo(`Press Ctrl+C to stop the server`);
-    logInfo(`Server stats available at http://localhost:${PORT}/server-stats`);
-}); 
+// For Vercel, export the request handler function
+module.exports = (req, res) => {
+    // Handle request (same function used by the HTTP server)
+    handleRequest(req, res);
+};
+
+// Main request handler function
+function handleRequest(req, res) {
+    // ... existing request handling code ...
+} 

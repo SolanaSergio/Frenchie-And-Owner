@@ -5,7 +5,11 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "nodemon server.js"
+    "dev": "nodemon server.js",
+    "build": "echo 'No build step needed - static files are ready to go!'"
+  },
+  "engines": {
+    "node": ">=14.x"
   },
   "keywords": [
     "3D",
@@ -17,7 +21,8 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "canvas": "^3.1.0"
+    "canvas": "^3.1.0",
+    "three": "^0.157.0"
   },
   "devDependencies": {
     "nodemon": "^2.0.22"
